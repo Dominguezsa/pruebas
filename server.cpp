@@ -3,7 +3,10 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #include <thread> // Para los hilos
+#include <fcntl.h>
+#include <errno.h>
 
 void error(const std::string &mensaje) {
     std::cerr << mensaje << std::endl;
@@ -74,24 +77,40 @@ int main(int argc, char *argv[]) {
     int puerto = std::stoi(argv[1]);
     std::string aceptar_varios = argv[2];
 
+    // Obtener información de la dirección
+    struct addrinfo hints{}, *res;
+    hints.ai_family = AF_INET; // Permite tanto IPv4 como IPv6
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE; // Usar la dirección del servidor local
+
+    // Convertir puerto a cadena para pasarlo a getaddrinfo
+    std::string puerto_str = std::to_string(puerto);
+
+    if (getaddrinfo(nullptr, puerto_str.c_str(), &hints, &res) != 0) {
+        error("Error al obtener información de la dirección");
+    }
+
     // Crear socket
-    int servidor_fd = socket(AF_INET, SOCK_STREAM, 0);
+    int servidor_fd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (servidor_fd < 0) {
         error("Error al abrir el socket");
     }
 
-    // Configurar la dirección del servidor
-    sockaddr_in direccion_servidor{};
-    direccion_servidor.sin_family = AF_INET;
-    direccion_servidor.sin_addr.s_addr = INADDR_ANY;
-    direccion_servidor.sin_port = htons(puerto);
-
-    // Asociar socket con el puerto
-    if (bind(servidor_fd, (struct sockaddr *)&direccion_servidor, sizeof(direccion_servidor)) < 0) {
-        error("Error en el bind");
+    // Permitir la reutilización del puerto
+    int optval = 1;
+    if (setsockopt(servidor_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+        error("Error al establecer opciones de socket");
     }
 
-    // Ponerse en escucha
+    // Realizar el bind
+    if (bind(servidor_fd, res->ai_addr, res->ai_addrlen) < 0) {
+        std::cerr << "Error en el bind";
+        close(servidor_fd);
+        freeaddrinfo(res);
+        return 1;
+    }
+
+    // Escuchar en el socket
     if (listen(servidor_fd, 1) < 0) {
         error("Error en el listen");
     }
@@ -112,8 +131,12 @@ int main(int argc, char *argv[]) {
         manejar_cliente(cliente_fd);
     } else {
         std::cerr << "El segundo argumento debe ser 'yes' o 'no'." << std::endl;
+        close(servidor_fd);
+        freeaddrinfo(res);
         return 1;
     }
+
+    freeaddrinfo(res); // Liberar la memoria de addrinfo
     close(servidor_fd);
     return 0;
 }
