@@ -58,7 +58,7 @@ int main(int argc, char *argv[]) {
 
         // Enviar mensaje al servidor
         mensaje += " "; // Agregar espacio al final
-        if (write(cliente_fd, mensaje.c_str(), mensaje.length()) < 0) {
+        if (send(cliente_fd, mensaje.c_str(), mensaje.size(), 0) < 0) {
             error("Error al escribir en el socket");
         }
 
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
 
         // Leer respuesta del servidor
         memset(buffer, 0, sizeof(buffer));
-        ssize_t bytes_leidos = read(cliente_fd, buffer, sizeof(buffer) - 1);
+        ssize_t bytes_leidos = recv(cliente_fd, buffer, sizeof(buffer), 0);
         if (bytes_leidos < 0) {
             error("Error al leer del socket");
         }
