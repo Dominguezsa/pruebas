@@ -30,18 +30,6 @@ void manejo_con_servidor(int cliente_fd) {
             break;
         }
 
-        // Leer respuesta del servidor
-        memset(buffer, 0, sizeof(buffer));
-        ssize_t bytes_leidos = recv(cliente_fd, buffer, sizeof(buffer), 0);
-        if (bytes_leidos < 0) {
-            error("Error al leer del socket");
-        }
-        if (bytes_leidos == 0) {
-            std::cout << "Conexión cerrada por el servidor." << std::endl;
-            break;
-        }
-
-        std::cout << "Respuesta del servidor: " << buffer << std::endl;
     }
 
     close(cliente_fd);

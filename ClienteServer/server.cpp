@@ -14,7 +14,7 @@ void error(const std::string &mensaje) {
 }
 
 // Función para manejar la lógica de cada cliente
-void manejar_cliente(int cliente_fd) {
+void manejar_cliente(int cliente_fd, int numero_cliente) {
     char buffer[1]; // Leer un byte a la vez
     std::string mensajeAcumulado;
 
@@ -61,15 +61,17 @@ void manejar_cliente(int cliente_fd) {
 
 // Función para aceptar conexiones y crear hilos para cada cliente
 void aceptar_conexiones(int servidor_fd) {
+    int numero_cliente = 1;
     while (true) {
         int cliente_fd = accept(servidor_fd, nullptr, nullptr);
         if (cliente_fd < 0) {
-            error("Error al aceptar la conexión");
+            error("Error al aceptar la conexión");  
         }
         std::cout << "Cliente conectado." << std::endl;
 
         // Crear un hilo para manejar al cliente
-        std::thread hilo_cliente(manejar_cliente, cliente_fd);
+        std::thread hilo_cliente(manejar_cliente, cliente_fd, numero_cliente);
+        numero_cliente++;
         hilo_cliente.detach(); // El hilo se maneja por separado
     }
 }
@@ -91,10 +93,9 @@ int main(int argc, char *argv[]) {
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE; // Usar la dirección del servidor local
 
-    // Convertir puerto a cadena para pasarlo a getaddrinfo
-    std::string puerto_str = std::to_string(puerto);
+    char *puerto_str = argv[1];
 
-    if (getaddrinfo(nullptr, puerto_str.c_str(), &hints, &res) != 0) {
+    if (getaddrinfo(nullptr, puerto_str, &hints, &res) != 0) {
         error("Error al obtener información de la dirección");
     }
 
@@ -105,13 +106,13 @@ int main(int argc, char *argv[]) {
     }
 
     // Permitir la reutilización del puerto
-    int optval = 1;
-    if (setsockopt(servidor_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
-        error("Error al establecer opciones de socket");
-    }
+    //int optval = 1;
+    //if (setsockopt(servidor_fd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) < 0) {
+    //    error("Error al establecer opciones de socket");
+    // }
 
     // Realizar el bind
-    if (bind(servidor_fd, res->ai_addr, res->ai_addrlen) < 0) {
+   if (bind(servidor_fd, res->ai_addr, res->ai_addrlen) < 0) {
         std::cerr << "Error en el bind";
         close(servidor_fd);
         freeaddrinfo(res);
@@ -123,6 +124,15 @@ int main(int argc, char *argv[]) {
         error("Error en el listen");
     }
     fprintf(stdout, "Escuchando en el puerto %d...\n", puerto);
+
+
+
+
+
+
+
+
+
 
     if (aceptar_varios == "yes") {
         // Aceptar múltiples conexiones en un hilo
