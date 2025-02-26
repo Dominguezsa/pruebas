@@ -4,7 +4,7 @@
 int Adelantar(FILE *f, unsigned OffsetTo, unsigned OffsetFrom, unsigned Length) {
     if (!f) return -1;  // Verificar si el archivo es válido
 
-    unsigned char *buffer = (unsigned char *)malloc(Length);
+    unsigned char *buffer = malloc(Length);
     if (!buffer) return -2;  // Error de asignación de memoria
 
     // Leer desde OffsetFrom

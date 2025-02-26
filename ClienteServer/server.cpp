@@ -7,74 +7,113 @@
 #include <thread> // Para los hilos
 #include <fcntl.h>
 #include <errno.h>
+#include <vector>
 
 void error(const std::string &mensaje) {
     std::cerr << mensaje << std::endl;
     exit(1);
 }
 
-// Función para manejar la lógica de cada cliente
-void manejar_cliente(int cliente_fd, int numero_cliente) {
-    char buffer[1]; // Leer un byte a la vez
-    std::string mensajeAcumulado;
 
-    while (true) {
-        ssize_t bytes_leidos = recv(cliente_fd, buffer, sizeof(buffer), 0);
-        if (bytes_leidos < 0) {
-            error("Error al leer del socket");
-        }
-        if (bytes_leidos == 0) {
-            // Conexión cerrada por el cliente
-            break;
-        }
-        char caracter = buffer[0];
-        if (caracter == ' ') {
-            // Procesar la palabra acumulada
-            if (mensajeAcumulado == "Cortar") {
-                std::cout << "Recibido 'Cortar'. Finalizando conexión." << std::endl;
-                break;
+class ManejoCliente {
+private:
+    int cliente_fd;
+    int numero_cliente;
+
+public:
+
+    ManejoCliente(int cliente_fd, int numero_cliente) : cliente_fd(cliente_fd), numero_cliente(numero_cliente) {}
+
+    void manejar_cliente(){
+        char buffer[1]; // Leer un byte a la vez
+        std::string mensajeAcumulado;
+        try {
+            while (true) {
+                ssize_t bytes_leidos = recv(cliente_fd, buffer, sizeof(buffer), 0);
+                if (bytes_leidos < 0) {
+                    error("Error al leer del socket");
+                }
+                if (bytes_leidos == 0) {
+                    // Conexión cerrada por el cliente
+                    break;
+                }
+                char caracter = buffer[0];
+                if (caracter == ' ') {
+                    // Procesar la palabra acumulada
+                    if (mensajeAcumulado == "Cortar") {
+                        std::cout << "Recibido 'Cortar'. Finalizando conexión." << std::endl;
+                        break;
+                    }
+        
+                    // Enviar la longitud de la palabra
+                    std::string respuesta = std::to_string(mensajeAcumulado.length()) + " ";
+        
+                    ssize_t bytes_enviados = send(cliente_fd, respuesta.c_str(), respuesta.length(), 0);
+        
+                    if (bytes_enviados < 0) {
+                        error("Error al escribir en el socket");
+                    }
+        
+                    // Limpiar el acumulador
+                    mensajeAcumulado.clear();
+                } else {
+                    // Seguir acumulando caracteres
+                    mensajeAcumulado += caracter;
+                }
             }
-
-            // Enviar la longitud de la palabra
-            std::string respuesta = std::to_string(mensajeAcumulado.length()) + " ";
-
-            ssize_t bytes_enviados = send(cliente_fd, respuesta.c_str(), respuesta.length(), 0);
-
-            if (bytes_enviados < 0) {
-                error("Error al escribir en el socket");
-            }
-
-            // Limpiar el acumulador
-            mensajeAcumulado.clear();
-        } else {
-            // Seguir acumulando caracteres
-            mensajeAcumulado += caracter;
+            std::cout << "Conexión cerrada." << std::endl;
+        }catch (std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
         }
     }
-    close(cliente_fd);
-    std::cout << "Conexión cerrada." << std::endl;
-}
 
-
-
-
-
-// Función para aceptar conexiones y crear hilos para cada cliente
-void aceptar_conexiones(int servidor_fd) {
-    int numero_cliente = 1;
-    while (true) {
-        int cliente_fd = accept(servidor_fd, nullptr, nullptr);
-        if (cliente_fd < 0) {
-            error("Error al aceptar la conexión");  
-        }
-        std::cout << "Cliente conectado." << std::endl;
-
-        // Crear un hilo para manejar al cliente
-        std::thread hilo_cliente(manejar_cliente, cliente_fd, numero_cliente);
-        numero_cliente++;
-        hilo_cliente.detach(); // El hilo se maneja por separado
+    void finalizarEjecucion() {
+        shutdown(cliente_fd, SHUT_RDWR);
+        close(cliente_fd);
     }
-}
+};
+
+
+class AceptarConexiones {
+private:
+    int servidor_fd;
+    std::vector<ManejoCliente> hilos;
+public:
+
+    AceptarConexiones(int servidor_fd) : servidor_fd(servidor_fd) {}
+
+    void aceptar_conexiones() {
+        int numero_cliente = 1;
+        try {
+            while (true) {
+                int cliente_fd = accept(servidor_fd, nullptr, nullptr);
+                if (cliente_fd < 0) {
+                    error("Error al aceptar la conexión");
+                }
+                std::cout << "Cliente conectado." << std::endl;
+
+                // Crear un hilo para manejar al cliente
+                ManejoCliente cliente(cliente_fd, numero_cliente);
+                hilos.push_back(cliente);
+                cliente.manejar_cliente();
+                numero_cliente++;
+            }
+            finalizar();
+        }
+        catch (std::exception& e) {
+            std::cerr << "Error: " << e.what() << std::endl;
+        }
+    }
+
+    void finalizar() {
+        for (auto& hilo : hilos) {
+            hilo.finalizarEjecucion();
+        }
+        hilos.clear();
+        shutdown(servidor_fd, SHUT_RDWR);
+        close(servidor_fd);
+    }  
+};
 
 
 
@@ -125,36 +164,8 @@ int main(int argc, char *argv[]) {
     }
     fprintf(stdout, "Escuchando en el puerto %d...\n", puerto);
 
-
-
-
-
-
-
-
-
-
-    if (aceptar_varios == "yes") {
-        // Aceptar múltiples conexiones en un hilo
-        aceptar_conexiones(servidor_fd);
-    } else if (aceptar_varios == "no") {
-        // Aceptar solo una conexión
-        int cliente_fd = accept(servidor_fd, nullptr, nullptr);
-        if (cliente_fd < 0) {
-            error("Error al aceptar la conexión");
-        }
-        std::cout << "Cliente conectado." << std::endl;
-
-        // Manejar el cliente en el hilo principal
-        manejar_cliente(cliente_fd);
-    } else {
-        std::cerr << "El segundo argumento debe ser 'yes' o 'no'." << std::endl;
-        close(servidor_fd);
-        freeaddrinfo(res);
-        return 1;
-    }
-
+    AceptarConexiones aceptar_conexiones(servidor_fd);
+    aceptar_conexiones.aceptar_conexiones();
     freeaddrinfo(res); // Liberar la memoria de addrinfo
-    close(servidor_fd);
     return 0;
 }

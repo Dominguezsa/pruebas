@@ -7,36 +7,16 @@
 #include <thread> // Para los hilos
 #include <fcntl.h>
 #include <errno.h>
-#include <fstream>
-#include <list>
-#include <atomic>
-
-
 
 void error(const std::string &mensaje) {
     std::cerr << mensaje << std::endl;
     exit(1);
 }
 
-std::atomic<bool> isAlive = true;
-
-
 // Función para manejar la lógica de cada cliente
 void manejar_cliente(int cliente_fd, int numero_cliente) {
     char buffer[1]; // Leer un byte a la vez
     std::string mensajeAcumulado;
-
-    // Crear el nombre del archivo según el número del cliente
-    std::string nombreArchivo = (numero_cliente < 10 ? "0" : "") + std::to_string(numero_cliente) + ".txt";
-    std::ofstream archivoSalida(nombreArchivo, std::ios::app); // Abrir en modo añadir (append)
-
-    if (!archivoSalida.is_open()) {
-        std::cerr << "Error al abrir el archivo: " << nombreArchivo << std::endl;
-        close(cliente_fd);
-        return;
-    }
-
-    bool primera_vez = true;
 
     while (true) {
         ssize_t bytes_leidos = recv(cliente_fd, buffer, sizeof(buffer), 0);
@@ -54,15 +34,15 @@ void manejar_cliente(int cliente_fd, int numero_cliente) {
                 std::cout << "Recibido 'Cortar'. Finalizando conexión." << std::endl;
                 break;
             }
-            if (mensajeAcumulado == "Cerrar" && primera_vez) {
-                std::cout << "Recibido 'Cerrar'. Finalizando conexión y cerrando el servidor." << std::endl;
-                archivoSalida.close(); // Cerrar el archivo
-                close(cliente_fd); // Cerrar la conexión
-                isAlive = false;
-            }
 
-            // Registrar la longitud de la palabra en el archivo
-            archivoSalida << mensajeAcumulado.length() << std::endl;
+            // Enviar la longitud de la palabra
+            std::string respuesta = std::to_string(mensajeAcumulado.length()) + " ";
+
+            ssize_t bytes_enviados = send(cliente_fd, respuesta.c_str(), respuesta.length(), 0);
+
+            if (bytes_enviados < 0) {
+                error("Error al escribir en el socket");
+            }
 
             // Limpiar el acumulador
             mensajeAcumulado.clear();
@@ -70,17 +50,17 @@ void manejar_cliente(int cliente_fd, int numero_cliente) {
             // Seguir acumulando caracteres
             mensajeAcumulado += caracter;
         }
-        primera_vez = false;
     }
-
-    archivoSalida.close(); // Cerrar el archivo al finalizar
     close(cliente_fd);
     std::cout << "Conexión cerrada." << std::endl;
 }
 
 
+
+
+
 // Función para aceptar conexiones y crear hilos para cada cliente
-void aceptar_conexiones(int servidor_fd,  std::list<std::thread> hilos_clientes) {
+void aceptar_conexiones(int servidor_fd) {
     int numero_cliente = 1;
     while (true) {
         int cliente_fd = accept(servidor_fd, nullptr, nullptr);
@@ -91,11 +71,10 @@ void aceptar_conexiones(int servidor_fd,  std::list<std::thread> hilos_clientes)
 
         // Crear un hilo para manejar al cliente
         std::thread hilo_cliente(manejar_cliente, cliente_fd, numero_cliente);
-        hilos_clientes.push_back(std::move(hilo_cliente));
         numero_cliente++;
+        hilo_cliente.detach(); // El hilo se maneja por separado
     }
 }
-
 
 
 
@@ -105,13 +84,12 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    int puerto = std::stoi(argv[1]);
     std::string aceptar_varios = argv[2];
 
     // Obtener información de la dirección
     struct addrinfo hints{}, *res;
     hints.ai_family = AF_INET; // Permite tanto IPv4 como IPv6
-    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_socktype = SOCK_STREAM; // Socket TCP
     hints.ai_flags = AI_PASSIVE; // Usar la dirección del servidor local
 
     char *puerto_str = argv[1];
@@ -144,10 +122,13 @@ int main(int argc, char *argv[]) {
     if (listen(servidor_fd, 1) < 0) {
         error("Error en el listen");
     }
-    fprintf(stdout, "Escuchando en el puerto %d...\n", puerto);
+    fprintf(stdout, "Escuchando en el puerto %s...\n", puerto_str);
 
-    std::list<std::thread> hilos_clientes;
-    std::thread hilo_aceptar_conexiones(aceptar_conexiones, servidor_fd, hilos_clientes);
+
+
+
+    aceptar_conexiones(servidor_fd);
+
     freeaddrinfo(res); // Liberar la memoria de addrinfo
     close(servidor_fd);
     return 0;

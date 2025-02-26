@@ -24,13 +24,8 @@ void manejo_con_servidor(int cliente_fd) {
         if (send(cliente_fd, mensaje.c_str(), mensaje.size(), 0) < 0) {
             error("Error al escribir en el socket");
         }
-
-        if (mensaje.find("Cortar") != std::string::npos) {
-            std::cout << "Finalizando conexión con el servidor." << std::endl;
-            break;
-        }
-
     }
+    std::cout << "Cerrando conexión..." << std::endl;
 
     close(cliente_fd);
 }
@@ -76,4 +71,16 @@ int main(int argc, char *argv[]) {
 
     manejo_con_servidor(cliente_fd);
     return 0;
+}
+
+
+void sacarOcurrencias(std::string a, std::string b ) {
+    int length = b.size();
+    while(true) {
+        a = std::find(a.begin(), a.end(), b);
+        if (a == a.end()) {
+            break;
+        }
+        a.erase(a, length);
+    }
 }
